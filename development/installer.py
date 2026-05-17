@@ -72,8 +72,8 @@ def get_args_parser():
         "--frappe-branch",
         action="store",
         type=str,
-        help="frappe repo to use, default: version-15",  # noqa: E501
-        default="version-15",
+        help="frappe repo to use, default: version-16",  # noqa: E501
+        default="version-16",
     )
     parser.add_argument(
         "-p",
@@ -207,9 +207,10 @@ def create_site_in_bench(args):
         new_site_cmd = [
             "bench",
             "new-site",
+            f"--db-root-username=root",
             f"--db-host=mariadb",  # Should match the compose service name
             f"--db-type={args.db_type}",  # Add the selected database type
-            f"--no-mariadb-socket",
+            f"--mariadb-user-host-login-scope=%",
             f"--db-root-password=123",  # Replace with your MariaDB password
             f"--admin-password={args.admin_password}",
         ]
@@ -222,6 +223,7 @@ def create_site_in_bench(args):
         new_site_cmd = [
             "bench",
             "new-site",
+            f"--db-root-username=root",
             f"--db-host=postgresql",  # Should match the compose service name
             f"--db-type={args.db_type}",  # Add the selected database type
             f"--db-root-password=123",  # Replace with your PostgreSQL password

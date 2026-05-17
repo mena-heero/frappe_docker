@@ -1,24 +1,30 @@
-version: "3"
-
 services:
   backend:
-    image: frappe/erpnext:v15.29.2
+    image: frappe/erpnext:v16.18.3
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: on-failure
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      MYSQL_ROOT_PASSWORD: admin
+      MARIADB_ROOT_PASSWORD: admin
 
   configurator:
-    image: frappe/erpnext:v15.29.2
+    image: frappe/erpnext:v16.18.3
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: none
     entrypoint:
       - bash
       - -c
-    # add redis_socketio for backward compatibility
     command:
       - >
         ls -1 apps > sites/apps.txt;
@@ -39,7 +45,9 @@ services:
       - logs:/home/frappe/frappe-bench/logs
 
   create-site:
-    image: frappe/erpnext:v15.29.2
+    image: frappe/erpnext:v16.18.3
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: none
@@ -67,14 +75,18 @@ services:
           fi
         done;
         echo "sites/common_site_config.json found";
-        bench new-site --no-mariadb-socket --admin-password=admin --db-root-password=admin --install-app erpnext --set-default frontend;
+        bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default frontend;
 
   db:
-    image: mariadb:10.6
+    image: mariadb:11.8
+    networks:
+      - frappe_network
     healthcheck:
-      test: mysqladmin ping -h localhost --password=admin
-      interval: 1s
-      retries: 15
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 5s
+      interval: 5s
+      timeout: 5s
+      retries: 5
     deploy:
       restart_policy:
         condition: on-failure
@@ -82,14 +94,16 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
     environment:
       MYSQL_ROOT_PASSWORD: admin
+      MARIADB_ROOT_PASSWORD: admin
     volumes:
       - db-data:/var/lib/mysql
 
   frontend:
-    image: frappe/erpnext:v15.29.2
+    image: frappe/erpnext:v16.18.3
+    networks:
+      - frappe_network
     depends_on:
       - websocket
     deploy:
@@ -113,7 +127,9 @@ services:
       - "8080:8080"
 
   queue-long:
-    image: frappe/erpnext:v15.29.2
+    image: frappe/erpnext:v16.18.3
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: on-failure
@@ -125,9 +141,14 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
 
   queue-short:
-    image: frappe/erpnext:v15.29.2
+    image: frappe/erpnext:v16.18.3
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: on-failure
@@ -139,9 +160,14 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
 
   redis-queue:
     image: redis:6.2-alpine
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: on-failure
@@ -150,14 +176,16 @@ services:
 
   redis-cache:
     image: redis:6.2-alpine
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: on-failure
-    volumes:
-      - redis-cache-data:/data
 
   scheduler:
-    image: frappe/erpnext:v15.29.2
+    image: frappe/erpnext:v16.18.3
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: on-failure
@@ -169,13 +197,18 @@ services:
       - logs:/home/frappe/frappe-bench/logs
 
   websocket:
-    image: frappe/erpnext:v15.29.2
+    image: frappe/erpnext:v16.18.3
+    networks:
+      - frappe_network
     deploy:
       restart_policy:
         condition: on-failure
     command:
       - node
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
+    environment:
+      FRAPPE_REDIS_CACHE: redis://redis-cache:6379
+      FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
@@ -183,6 +216,9 @@ services:
 volumes:
   db-data:
   redis-queue-data:
-  redis-cache-data:
   sites:
   logs:
+
+networks:
+  frappe_network:
+    driver: bridge
